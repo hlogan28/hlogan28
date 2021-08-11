@@ -1,0 +1,18 @@
+---
+  - name: Create IPA Users
+
+    tasks:
+    - name: Create User Accounts
+      ipa_user:
+        displayname: '{{ username }}'
+        givenname: '{{ First }}'
+        sn: '{{ Last }}'
+        state: present
+        krbpasswordexpiration: 20301231235900
+        password: '{{ password }}'
+        uidnumber: '1001'
+        gidnumber: '100'
+        loginshell: /bin/bash
+        update_password: always
+        userauthtype: radius
+

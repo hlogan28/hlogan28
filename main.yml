@@ -1,0 +1,70 @@
+---
+- name: Wait for target connection to become reachable/usable
+  wait_for_connection:
+
+- name: Gather facts
+  setup:
+
+- name: Set the hostname
+  hostname:
+    name: '{{ ansible_host }}'
+  become: yes
+
+- name: Add IdM IP address to hosts file
+  lineinfile:
+    path: /etc/hosts
+    line: '{{ ansible_facts.default_ipv4.address }} {{ ansible_host }}'
+    state: present
+  become: yes
+
+- name: Install a modularity IdM with defined stream and profile
+  dnf:
+    name: '@idm:DL1/server'
+    state: present
+  become: yes
+
+- name: Update facts
+  setup:
+
+- name: Check if IdM client is configured
+  command:
+    argv:
+      - ipa
+      - '-n'
+  ignore_errors: True
+  register: ipa_check
+  changed_when: "'IPA client is not configured' in ipa_check.stderr"
+  failed_when: ipa_check.rc == 0
+
+- name: Run Non-Interactive IdM Install Script
+  command:
+    argv:
+      - ipa-server-install
+      - '--realm={{ ansible_facts.domain | upper }}'
+      - '--domain={{ ansible_facts.domain }}'
+      - '--ds-password={{ dm_pwd }}'
+      - '--admin-password={{ admin_pwd }}'
+      - --unattended
+  become: yes
+  when: ipa_check is changed
+
+- name: Remove Allow ALL Rule
+  community.general.ipa_hbacrule:
+    name: allow_all
+    state: absent
+    ipa_host: '{{ ipa_fqdn }}'
+    ipa_user: '{{ admin }}'
+    ipa_pass: '{{ admin_pwd }}'
+
+- name: Create Bastion Rule
+  community.general.ipa_hbacrule:
+    name: bastion_group
+    description: All users to access the bastion
+    hostgroup:
+    - bastion-group
+    usergroup:
+    - bastion-users
+    state: present
+    ipa_host: '{{ ipa_fqdn }}'
+    ipa_user: '{{ admin }}'
+    ipa_pass: '{{ admin_pwd }}'

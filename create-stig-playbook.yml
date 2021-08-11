@@ -1,0 +1,45 @@
+--- 
+- name: Create Stig Playbook
+  hosts: localhost
+
+  tasks:
+  - name: Display Facts
+    debug: 
+      msg: "{{ ansible_facts }}"
+
+  - name: Upgrade All packages
+    yum:
+      name: '*'
+      state: latest
+
+  - name: Install OpenScap packages
+    yum:
+      name:
+        - scap-security-guide 
+        - openscap-utils 
+        - bzip2
+        - openscap-scanner 
+        - scap-workbench
+
+  - name: Perform an inital compliance scan 
+    command: oscap xccdf eval --fetch-remote-resources --profile xccdf_org.ssgproject.content_profile_stig --results-arf /tmp/non-remediated-arf.xml --report /tmp/non-remediated-report.html /usr/share/xml/scap/ssg/content/ssg-rhel8-ds-1.2.xml
+
+  - name: Generate Ansible Playbook for remediation
+    command: oscap xccdf generate fix --fetch-remote-resources --fix-type ansible --result-id "" /tmp/non-remediated-arf.xml > /tmp/PlaybookToRemediate.yml
+
+  - name: Pull PlaybookToRemediate.yml from remote host to local
+    fetch:
+      src: /tmp/PlaybookToRemediate.yml
+      dest: /tmp
+      flat: yes
+
+#- name: Download Red Hat Enterprise Linux 8 STIG Ver 1, Rel 1
+  #  get_url:
+  #     url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_RHEL_8_V1R1_STIG.zip
+  #     dest: /usr/share/xml/scap/ssg/content
+  #     mode: '0644'
+
+
+
+    
+    

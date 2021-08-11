@@ -1,0 +1,233 @@
+---
+
+###########################################################
+## HBAC Rules                                             #
+###########################################################
+
+- name: Delete Allow All Rule
+  community.general.ipa_hbac:
+    name: allow_all
+    state: absent
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Bastion Access HBAC Rule
+  community.general.ipa_hbacrule:
+    name: bastion-access
+    description: Allow users access to the bastion host
+    host: bastion.'{{ ansible_domain }}'
+    usergroup: bastion-users
+    service: ['sshd', 'sudo']
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+#########################################################
+## Global Configuration Settings                        #
+#########################################################
+
+- name: Enable 2FA in Global Configuration Settings
+  community.general.ipa_config:
+    ipauserauthtype: ['password', 'otp']
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+#########################################################
+## Create IdM Service Accounts                          #
+#########################################################
+
+- name: Create LDAP Service Account
+  community.general.ipa_user:
+    name: service-ldap
+    state: present
+    userauthtype: password
+    krbpasswordexpiration: 20241230182022
+    givenname: Service
+    sn: LDAP
+    homedirectory: /home/service-ldap
+    password: { password }
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_password: { ipa_password }
+    update_password: on_create
+  become: yes
+
+- name: Create Jenkins Service Account
+  community.general.ipa_user:
+    name: service-jenkins
+    state: present
+    userauthtype: password
+    krbpasswordexpiration: 20241230182022
+    givenname: Service
+    sn: Jenkins
+    homedirectory: /home/service-jenkins
+    password: { password }
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_password: { ipa_password }
+    update_password: on_create
+  become: yes
+
+  - name: Create Gitlab Service Account
+  community.general.ipa_user:
+    name: service-gitlab
+    state: present
+    userauthtype: password
+    krbpasswordexpiration: 20241230182022
+    givenname: Service
+    sn: Gitlab
+    homedirectory: /home/service-gitlab
+    password: { password }
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_password: { ipa_password }
+    update_password: on_create
+  become: yes
+
+#########################################################
+## Create IdM Groups                                    #
+#########################################################
+
+- name: Create VPN Users Group
+  community.general.ipa_group:
+    name: vpn-users
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Bastion Users Group
+  community.general.ipa_group:
+    name: bastion-users
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create GitLab Users Group
+  community.general.ipa_group:
+    name: gitlab-users
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Jenkins Users Group
+  community.general.ipa_group:
+    name: jenkins-users
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+  - name: Create Jenkins Administrators Users Group
+  community.general.ipa_group:
+    name: jenkins-administrators
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Nexus Users Group
+  community.general.ipa_group:
+    name: nexus-users
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Nexus Administrator Group
+  community.general.ipa_group:
+    name: nexus-admin
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Sonar Administrators Users Group
+  community.general.ipa_group:
+    name: sonar-administrators
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Sonar Creators Group
+  community.general.ipa_group:
+    name: sonar-creators
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Sonar Users Group
+  community.general.ipa_group:
+    name: sonar-users
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+###########################################################
+## SUDO Rules                                             #
+###########################################################
+
+- name: Create Super Admin Sudo Rule
+  community.general.ipa_sudorule:
+    name: super-admins
+    cmdcategory: all
+    description: Allow users to run with sudo without password
+    hostcategory: all
+    sudoopt:
+      - '!authenticate'
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+- name: Create Podman Usage Rule
+  community.general.ipa_sudorule:
+    name: podman-usage
+    description: Allow users to run podman commands
+    sudoopt:
+      - '!authenticate'
+    cmd: '/bin/podman'
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+###########################################################
+## SUDO Commands                                          #
+###########################################################
+
+- name: Create Podman Sudo Command
+  community.general.ipa_sudocmd:
+    name: /bin/podman
+    description: Run Podman Command
+    state: present
+    ipa_host: '{{ ansible_host }}'
+    ipa_user: admin
+    ipa_pass: { ipa_password }
+  become: yes
+
+
+

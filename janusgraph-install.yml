@@ -1,0 +1,216 @@
+---
+
+- name: Install JanusGraph
+  gather_facts: true
+  hosts: '{{ ansible_hosts }}'
+  tasks:
+
+- name: Disable SELINX
+  command:
+    argv:
+      - setenforce
+      - '0'
+  become: yes
+
+- name: Disable SELinux on reboot
+  selinux:
+    state: disabled
+  become: yes
+
+## JanusGraph uses Elasticsearch as its Index Backend
+
+- name: Import Elasticsearch GPG Signing Key
+  command:
+    argv:
+      - rpm
+      - --import
+      - https://artifacts.elastic.co/GPG-KEY-elasticsearch
+  become: yes
+
+- name: Create Elasticsearch Repository File
+  ansible.builtin.file:
+    path: /etc/yum.repos.d/elasticsearch.repo
+    state: touch
+    mode: '0644'
+  become: yes
+
+## JanusGraph uses Cassandra as its Storage Backend
+
+- name: Create Cassandra Repository File
+  ansible.builtin.file:
+    path: /etc/yum.repos.d/cassandra.repo
+    state: touch
+    mode: '0644'
+  become: yes
+
+- name: Configure YUM Repository Configuration file for Elasticsearch
+  blockinfile:
+    path: /etc/yum.repos.d/elasticsearch.repo
+    block: |
+      [Elasticsearch-7]
+      name=Elasticsearch repository for 7.x packages
+      baseurl=https://artifacts.elastic.co/packages/7.x/yum
+      gpgcheck=1
+      gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+      enabled=1
+      autorefresh=1
+      type=rpm-md
+  become: yes
+
+- name: Configure YUM Repository Configuration file for Cassandra
+  blockinfile:
+    path: /etc/yum.repos.d/cassandra.repo
+    block: |
+      [cassandra]
+      name=Apache Cassandra
+      baseurl=https://www.apache.org/dist/cassandra/redhat/311x/
+      gpgcheck=1
+      repo_gpgcheck=1
+      gpgkey=https://www.apache.org/dist/cassandra/KEYS
+  become: yes
+
+    
+- name: Install required packages for JanusGraph
+  dnf:
+    name:
+      - java-11-openjdk
+      - java-11-openjdk-headless
+      - java-11-openjdk-devel
+      - unzip
+      - python3
+      - elasticsearch
+      - cassandra
+      - wget
+    state: latest
+  become: yes
+
+- name: Enable RPC Server
+  ansible.builtin.lineinfile:
+    path: /etc/cassandra/default.conf/cassandra.yaml
+    regexp: '^start_rpc: false'
+    line: 'start_rpc: true'
+  become: yes
+
+- name: Create Service File for Cassandra
+  ansible.builtin.file:
+    path: /etc/systemd/system/cassandra.service
+    state: touch
+    mode: '0644'
+  become: yes
+
+- name: Populate Service File for Cassandra
+  blockinfile:
+    path: /etc/systemd/system/cassandra.service
+    block: | 
+      [Unit]
+      Description=Apache Cassandra
+      After=network.target
+
+      [Service]
+      PIDFile=/var/run/cassandra/cassandra.pid
+      User=cassandra
+      Group=cassandra
+      ExecStart=/usr/sbin/cassandra -f -p /var/run/cassandra/cassandra.pid
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+  become: yes
+
+- name: Enable Elasticsearch Service
+  ansible.builtin.systemd:
+    name: elasticsearch
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Daemon Reload
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Enable Cassandra Service
+  ansible.builtin.systemd:
+    name: cassandra
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Download Janusgraph Zip File
+  ansible.builtin.unarchive:
+    src: https://github.com/JanusGraph/janusgraph/releases/download/v0.5.3/janusgraph-full-0.5.3.zip
+    dest: /opt
+    remove_src: yes
+  become: yes
+
+- name: Copy gremlin-server.yaml to http-gremlin-server.yaml
+  ansible.builtin.copy:
+    src: /opt/janusgraph-full-0.5.3/conf/gremlin-server/gremlin-server.yaml
+    dest: /opt/janusgraph-full-0.5.3/conf/gremlin-server/http-gremlin-server.yaml
+    owner: root
+    group: root
+    mode: '0664'
+  become: yes
+
+- name: Update the IP address for Janusgraph
+  ansible.builtin.lineinfile:
+    path: /opt/janusgraph-full-0.5.3/conf/gremlin-server/http-gremlin-server.yaml
+    search_string: 'host: 0.0.0.0'
+    line: 'host: {{ ansible_facts.default_ipv4.address }}'
+    owner: root
+    group: root
+    mode: '0664'
+  become: yes
+
+- name: Update Channelizer Setting to Specify HttpChannelizer
+  ansible.builtin.lineinfile:
+    path: /opt/janusgraph-full-0.5.3/conf/gremlin-server/http-gremlin-server.yaml
+    search_string: 'channelizer: org.apache.tinkerpop.gremlin.server.channel.WebSocketChannelizer'
+    line: 'channelizer: org.apache.tinkerpop.gremlin.server.channel.HttpChannelizer'
+    owner: root
+    group: root
+    mode: '0664'
+  become: yes
+
+- name: Point to New Properties File Connect to Janusgraph Instance
+  ansible.builtin.lineinfile:
+    path: /opt/janusgraph-full-0.5.3/conf/gremlin-server/http-gremlin-server.yaml
+    search_string: 'graph: conf/janusgraph-inmemory.properties'
+    line: 'graph: conf/gremlin-server/janusgraph-cassandra-es-server.properties'
+    owner: root
+    group: root
+    mode: '0664'
+  become: yes
+
+- name: Create Service File for Janusgraph
+  ansible.builtin.file:
+    path: /etc/systemd/system/janusgraph.service
+    state: touch
+    mode: '0644'
+  become: yes
+
+- name: Populate Janusgraph Service File
+  blockinfile:
+    path: /etc/systemd/system/janusgraph.service
+    block: |
+      [Unit]
+      Description = JanusGraph Server
+      After = cassandra.service elasticsearch.service
+
+      [Service]
+      User=root
+      ExecStart =/opt/janusgraph-full-0.5.3/bin/gremlin-server.sh /opt/janusgraph-full-0.5.3/conf/gremlin-server/http-gremlin-server.yaml
+      TimeoutStartSec=60
+
+      [Install]
+      WantedBy = multi-user.target
+  become: yes
+
+- name: Enable Janusgraph Service
+  ansible.builtin.systemd:
+    name: janusgraph
+    state: started
+    enabled: yes
+  become: yes
+  
+

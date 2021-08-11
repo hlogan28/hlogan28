@@ -1,0 +1,148 @@
+---
+- name: Playbook to install SSO
+  hosts: sso.'{{ domain }}'
+
+  vars:
+    WILDFLY_HOME: /opt/wildfly
+
+  tasks:
+  - name: Set SELINUX to disabled
+    command:
+      argv:
+       - setenforce
+       - '0'
+    become: yes
+
+  - name: Disable SELINUX on restart
+    selinux:
+      state: disabled
+    become: yes
+
+  - name: Install Packages
+    dnf:
+      name:
+       - java-11-openjdk.x86_64
+       - jna.x86_64
+       - sssd-dbus
+      state: latest
+    become: yes
+
+  - name: Create Wildfly Directory in /etc
+    file:
+      path: /etc/wildfly
+      state: directory
+      mode: '0755'
+    become: yes
+
+  - name: Create PID Directory for Wildfly
+    file:
+      path: /var/run/wildfly
+      mode: '0755'
+      state: directory
+    become: yes
+
+  - name: Download and extract keycloak-14.0.0 Tar file
+    unarchive:
+      src: https://github.com/keycloak/keycloak/releases/download/14.0.0/keycloak-14.0.0.tar.gz 
+      dest: '{{ WILDFLY_HOME }}'
+      remote_src: yes
+    become: yes
+
+  - name: Rename keycloak-14.0.0 to wildfly
+    command: mv /opt/keycloak-14.0.0 /opt/wildfly
+    become: yes
+
+  - name: Setup Hostname
+    hostname:
+      name: '{{ ansible_host }}'
+
+  - name: Add SSO IP address to hosts file
+    lineinfile:
+      path: /etc/hosts
+      line: '{{ ansible_facts.default_ipv4.address }} {{ ansible_host }}'
+      state: present
+    become: yes
+
+  - name: Insert IP address to wildfly.conf file
+    lineinfile:
+      path: '{{ WILDFLY_HOME }}/docs/contrib/scripts/systemd/wildfly.conf'
+      regexp: '{{item.From}}'
+      line: '{{item.To}}'
+      state: present
+    with_items:
+      - { From: 'WILDFLY_BIND=0.0.0.0', To: 'WILDFLY_BIND={{ IP }}'}
+
+  - name: Copy wildfly.conf /etc/wildfly
+    copy:
+      src: '{{ WILDFLY_HOME }}/docs/contrib/scripts/systemd/wildfly.conf'
+      dest: /etc/wildfly/wildfly.conf
+      owner: root
+      group: root
+      mode: '0644'
+      backup: no
+    become: yes
+
+  - name: Force Java to use /dev/urandom
+    blockinfile:
+      path: /etc/wildfly/wildfly.conf
+      block: |
+         JAVA_OPTS="-Djava.security.egd=file:/dev/urandom"
+    become: yes
+
+  - name: Move launch.sh to bin
+    copy:
+      src: '{{ WILDFLY_HOME }}/docs/contrib/scripts/systemd/launch.sh'
+      dest: '{{ WILDFLY_HOME }}/bin/launch.sh'
+      owner: root
+      group: root
+      mode: '0755'
+      backup: no
+    become: yes
+  
+
+  - name: Change wildfly user to root
+    lineinfile:
+      path: "{{ WILDFLY_HOME }}/docs/contrib/scripts/systemd/wildfly.service"
+      regexp: '{{item.From}}'
+      line: '{{item.To}}'
+      state: present
+    with_items:
+      - { From: 'User=wildfly', To: 'User=root'}
+    become: yes
+
+  - name: Move wildfly service to /etc/systemd/system
+    copy:
+      src: '{{ WILDFLY_HOME }}/docs/contrib/scripts/systemd/wildfly.service'
+      dest: /etc/systemd/system/wildfly.service
+      owner: root
+      group: root
+      mode: '0644'
+      backup: no
+    become: yes
+
+  - name: Create Admin User
+    command:
+      argv:
+        - '{{ WILDFLY_HOME }}/bin/add-user-keycloak.sh'
+        - '-r=master'
+        - '-u=admin'
+        - '-p={{ wildfly_pwd }}'
+    become: yes
+
+  - name: Start Wildfly service
+    systemd:
+      state: started
+      name: wildfly
+    become: yes
+
+  - name: Enable Wildfly service
+    systemd:
+      name: wildfly
+      enabled: yes
+      masked: no
+    become: yes
+
+
+
+
+ 

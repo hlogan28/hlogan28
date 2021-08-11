@@ -1,0 +1,94 @@
+---
+- name: Install and Setup FreeRadius
+
+  tasks:
+    - name: Upgrade System
+      dnf:
+        name: "*"
+        state: latest
+      become: yes
+
+    - name: Install FreeRadius Packages
+      dnf:
+        name: '@freeradius' 
+          - freeradius-utils
+          - freeradius-mysql
+        state: present
+      become: yes
+
+    - name: Enable FreeRadius Daemon
+      service: 
+        name: radiusd
+        enabled: yes
+      become: yes
+
+    - name: Stop Firewalld
+      service:
+        name: firewalld
+        state: stopped
+      become: yes
+
+    #- name: Disable SELinux
+    #  selinux:
+    #    state: disabled
+    #  become: yes
+
+    - name: Start FreeRadius Daemon
+      service: 
+        name: radiusd
+        state: started
+      become: yes
+
+    - name: Update Authentication mode to use PAM
+      blockinfile:
+        path: /etc/raddb/sites-enabled/default 
+        block: |
+          '# Pluggable Authentication Modules.'
+          'pam'
+      become: yes
+
+    - name: Create symbolic link to enable PAM
+      file:
+        src: /etc/raddb/mods-available/pam
+        dest: /etc/raddb/mods-enabled/pam
+        owner: root
+        group: radiusd
+      state: link
+    become: yes
+
+    - name: Add Users to client.conf file
+      blockinfile:
+        path: /etc/raddb/clients.conf 
+        block: |
+           'client ipa.{{ ansible_facts.domain }}'
+           'ipaddr = ipa.{{ ansible_facts.domain }}'
+           'secret = '{{ rad_pwd }}'
+           'require_message_authenticator = no'
+           'nas_type = other'  
+      become: yes
+
+    - name: Add Users to users file
+      blockinfile:
+        path: /etc/raddb/users
+        block: | 
+          'DEFAULT Auth-Type := PAM'
+          'DEFAULT Group == "disabled" , Auth-Type := Reject'
+          'Reply-Message = "Your account has been disabled".'
+      become: yes
+
+    - name: Run FreeRadius in Execution mode
+      blockinfile:
+        path: /etc/raddb/radiusd.conf
+        block: |
+        'user = root'
+        'group = root'
+      become: yes
+
+    - name: Restart Radius Daemon
+      service:
+        name: radiusd
+        state: restarted
+      become: yes
+
+
+

@@ -1,0 +1,34 @@
+---
+- name: Create IdM Install Playbook
+  hosts: localhost
+  vars:
+      hostname: "{{ hostname }}"
+      ip: "{{ ip }}"
+      domain: "{{ domain }}"
+      DOMAIN: "{{ DOMAIN }}"
+      password: "{{ password }}"
+ 
+  tasks:
+  - name: Upgrade System
+    yum:
+      name: '*'
+      state: latest
+
+  - name: Set Hostname Of IdM Server
+    command: hostnamectl set-hostname "{{ hostname }}"
+
+  - name: Disable SELINUX
+    command: sed -i 's/^SELINUX=.*/SELINUX=permissive/g' /etc/selinux/config
+
+  - name: Modify Hosts File
+    command: echo "{{ ip }}" "{{ hostname }}"".""{{ domain }}" | tee -a /etc/hosts
+
+  - name: Install IdM Software
+    yum: 
+      name: 
+        - '@idm:DL1'
+        - freeipa-server
+
+  - name: Run Non-Interactive IdM Install Script
+    command: ipa-server-install -a "{{ password }}" --hostname="{{ hostname }}"".""{{ domain }}" -r "{{ DOMAIN }}" -p "{{ password }}" -n "{{ domain }}" --mkhomedir -U
+

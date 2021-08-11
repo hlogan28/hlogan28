@@ -1,0 +1,17 @@
+--- 
+- name: Install Oscap Playbook
+  hosts: localhost
+
+  tasks:
+  - name: Install OpenScap packages
+    dnf:
+      name:
+        - scap-security-guide 
+        - openscap-utils 
+        - bzip2
+        - openscap-scanner
+        - nginx
+    become: yes
+
+- name: Perform an inital compliance scan 
+    command: oscap xccdf eval --fetch-remote-resources --profile xccdf_org.ssgproject.content_profile_stig --results-arf /tmp/non-remediated-arf.xml --report /tmp/non-remediated-report.html /usr/share/xml/scap/ssg/content/ssg-rhel8-ds-1.2.xml
