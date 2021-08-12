@@ -1,0 +1,81 @@
+---
+
+  - name: Install JanusGraph
+    gather_facts: true
+    hosts: '{{ ansible_hosts }}'
+    tasks:
+
+  - name: Disable SELINX
+    command:
+      argv:
+        - setenforce
+        - '0'
+    become: yes
+
+  - name: Disable SELinux on reboot
+    selinux:
+      state: disabled
+    become: yes
+
+  - name: Install required packages for JanusGraph
+    dnf:
+      name:
+        - java-11-openjdk
+        - java-11-openjdk-headless
+        - java-11-openjdk-devel
+        - unzip
+        - python3
+        - wget
+      state: latest
+    become: yes
+
+  - name: Create Janus User
+    ansible.builtin.user:
+      name: janus
+    become: yes
+
+  - name: Create HBase User
+    ansible.builtin.user:
+      name: hbase
+    become: yes
+
+  - name: Download Janusgraph Zip File
+    ansible.builtin.unarchive:
+      src: https://github.com/JanusGraph/janusgraph/releases/download/v0.5.3/janusgraph-full-0.5.3.zip
+      dest: /opt
+      remote_src: yes
+      owner: janus
+      group: janus
+    become: yes
+
+  - name: Download and Extract HBase
+    ansible.builtin.unarchive:
+      src: https://archive.apache.org/dist/hbase/2.4.5/hbase-2.4.5-bin.tar.gz
+      dest: /opt
+      remote_src: yes
+      owner: hbase
+      group: hbase
+    become: yes
+
+  - name: Configure JanusGraph to use HBase
+    ansible.builtin.lineinfile:
+      path: /opt/janusgraph-full-0.5.3/conf/gremlin-server/gremlin-server.yaml
+      search_string: 'graph: conf/janusgraph-inmemory.properties'
+      line: 'graph: conf/gremlin-server/janusgraph-hbase.properties'
+      owner: janus
+      group: janus
+      mode: '0664'
+    become: yes
+
+  - name: Set the JAVA_HOME Environment Variable
+    ansible.builtin.lineinfile:
+      path: /opt/hbase-2.4.5/conf/hbase-env.sh
+      search_string: '# export JAVA_HOME=/usr/java/jdk1.8.0/'
+      line: 'export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.302.b08-0.el8_4.x86_64/jre/'
+      owner: hbase
+      group: hbase
+      mode: '0644'
+    become: yes
+
+  
+
