@@ -34,9 +34,9 @@
       name: janus
     become: yes
 
-  - name: Create HBase User
+  - name: Create Cassandra User
     ansible.builtin.user:
-      name: hbase
+      name: cassandra
     become: yes
 
   - name: Download Janusgraph Zip File
@@ -48,33 +48,26 @@
       group: janus
     become: yes
 
-  - name: Download and Extract HBase
+  - name: Download and Extract Apache Cassandra
     ansible.builtin.unarchive:
-      src: https://archive.apache.org/dist/hbase/2.4.5/hbase-2.4.5-bin.tar.gz
+      src: http://archive.apache.org/dist/cassandra/4.0.0/apache-cassandra-4.0.0-bin.tar.gz
       dest: /opt
       remote_src: yes
-      owner: hbase
-      group: hbase
+      owner: cassandra
+      group: cassandra
     become: yes
 
-  - name: Configure JanusGraph to use HBase
+  - name: Make Cassandra Owner
+    ansible.builtin.command: chown -R cassandra.cassandra /opt/apache-cassandra-4.0.0
+
+  - name: Configure JanusGraph to use Cassandra
     ansible.builtin.lineinfile:
       path: /opt/janusgraph-full-0.5.3/conf/gremlin-server/gremlin-server.yaml
       search_string: 'graph: conf/janusgraph-inmemory.properties'
-      line: 'graph: conf/gremlin-server/janusgraph-hbase.properties'
+      line: 'graph: conf/janusgraph-cql.properties'
       owner: janus
       group: janus
       mode: '0664'
-    become: yes
-
-  - name: Set the JAVA_HOME Environment Variable
-    ansible.builtin.lineinfile:
-      path: /opt/hbase-2.4.5/conf/hbase-env.sh
-      search_string: '# export JAVA_HOME=/usr/java/jdk1.8.0/'
-      line: 'export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.302.b08-0.el8_4.x86_64'
-      owner: hbase
-      group: hbase
-      mode: '0644'
     become: yes
 
   
